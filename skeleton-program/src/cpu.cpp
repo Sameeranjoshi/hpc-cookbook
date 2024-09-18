@@ -3,16 +3,6 @@
 #include <vector>
 #include "host.cpp"  // Include the IPU-related functions
 
-struct poplar_matmul_state_t {
-    optional<Device> device;
-    Graph graph;
-    map<string, Tensor> tensors;
-    map<string, Program> programs;
-    OptionFlags engineOptions;
-    map<string, int> programIds;
-    vector<Program> programsList;
-    vector<float> hostData;
-};
 
 // Function to initialize and run the IPU operations
 void run_ipu_pipeline_internal(poplar_matmul_state_t* state) {
@@ -28,15 +18,15 @@ void run_ipu_pipeline_internal(poplar_matmul_state_t* state) {
     }
 
     std::cout << "STEP 2: Create graph and compile codelets" << std::endl;
-    state->graph = createGraphAndAddCodelets(state->device);
+    state->graph = createGraphAndAddCodelets(*state);
 
     std::cout << "STEP 3: Building the compute graph" << std::endl;
     // state->tensors = map<string, Tensor>{};
     // state->programs = map<string, Program>{};
-    buildComputeGraph(state->graph, state->tensors, state->programs, state->device->getTarget().getNumTiles());
+    buildComputeGraph(*state);
 
     std::cout << "STEP 4: Define data streams" << std::endl;
-    defineDataStreams(state->graph, state->tensors, state->programs);
+    defineDataStreams(*state);
 
     std::cout << "STEP 5: Create engine and compile graph" << std::endl;
     state->engineOptions = OptionFlags{
