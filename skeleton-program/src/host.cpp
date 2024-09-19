@@ -61,16 +61,24 @@ auto getIpuDevice(const unsigned int numIpus = 1) -> optional<Device> {
     return device;
 }
 
-auto createGraphAndAddCodelets(poplar_matmul_state_t &state) -> Graph {
-    auto graph = poplar::Graph(state.device->getTarget());
+// auto createGraphAndAddCodelets(poplar_matmul_state_t &state) -> Graph {
+//     auto graph = poplar::Graph(state.device->getTarget());
 
-    // Add our custom codelet, building from CPP source
-    graph.addCodelets({"src/codelets/SkeletonCodelets.cpp"}, "-O3 -I codelets");
-    popops::addCodelets(graph);
-    return graph;
-}
+//     // Add our custom codelet, building from CPP source
+//     graph.addCodelets({"src/codelets/SkeletonCodelets.cpp"}, "-O3 -I codelets");
+//     popops::addCodelets(graph);
+//     return graph;
+// }
 
-auto buildComputeGraph(poplar_matmul_state_t &state) {
+auto kernel_buildComputeGraph(poplar_matmul_state_t &state) {
+    std::cout << "  STEP 2.1: Create graph and compile codelets" << std::endl;
+    // step 1 createGraphAndAddCodelets(compute nodes)
+    state.graph = poplar::Graph(state.device->getTarget());
+    state.graph.addCodelets({"src/codelets/SkeletonCodelets.cpp"}, "-O3 -I codelets");
+    popops::addCodelets(state.graph);
+
+    // step 2 data
+    std::cout << "  STEP 2.2: Add data to the graph" << std::endl;
     state.tensors["data"] = state.graph.addVariable(poplar::FLOAT, {NUM_DATA_ITEMS}, "data");
     poputil::mapTensorLinearly(state.graph, state.tensors["data"]);
 
