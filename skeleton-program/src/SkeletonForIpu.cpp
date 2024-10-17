@@ -34,7 +34,9 @@ using ::poplar::program::Repeat;
 using ::poplar::program::Execute;
 
 
-const auto NUM_DATA_ITEMS = 200000;
+const auto NUM_DATA_ITEMS = 10;
+const auto HOW_MUCH_TO_ADD = 2.0f;
+const auto NUM_TILES_IN_GC = 10;
 
 
 auto getIpuDevice(const unsigned int numIpus = 1) -> optional<Device> {
@@ -81,14 +83,14 @@ auto buildComputeGraph(Graph &graph, map<string, Tensor> &tensors, map<string, P
         auto v = graph.addVertex(cs, "SkeletonVertex", {
                 {"data", tensors["data"].slice(sliceStart, sliceEnd)}
         });
-        graph.setInitialValue(v["howMuchToAdd"], tileNum);
-        graph.setPerfEstimate(v, 100); // Ideally you'd get this as right as possible
+        graph.setInitialValue(v["howMuchToAdd"], HOW_MUCH_TO_ADD);
+        // graph.setPerfEstimate(v, 100); // Ideally you'd get this as right as possible
         graph.setTileMapping(v, tileNum);
     }
     auto executeIncrementVertex = Execute(cs);
 
-    auto mainProgram = Repeat(10, executeIncrementVertex, "repeat10x");
-    programs["main"] = mainProgram; // Program 0 will be the main program
+    // auto mainProgram = Repeat(1, executeIncrementVertex, "repeat1x");
+    programs["main"] = executeIncrementVertex; // Program 0 will be the main program
 }
 
 auto defineDataStreams(Graph &graph, map<string, Tensor> &tensors, map<string, Program> &programs) {
@@ -125,7 +127,7 @@ int main(int argc, char *argv[]) {
     std::cout << "STEP 3: Building the compute graph" << std::endl;
     auto tensors = map<string, Tensor>{};
     auto programs = map<string, Program>{};
-    buildComputeGraph(graph, tensors, programs, device->getTarget().getNumTiles());
+    buildComputeGraph(graph, tensors, programs, NUM_TILES_IN_GC /* numTiles */);
 
     std::cout << "STEP 4: Define data streams" << std::endl;
     defineDataStreams(graph, tensors, programs);
@@ -133,15 +135,8 @@ int main(int argc, char *argv[]) {
     std::cout << "STEP 5: Create engine and compile graph" << std::endl;
     auto ENGINE_OPTIONS = OptionFlags{
             {"target.saveArchive",                "archive.a"},
-            {"debug.instrument",                  "true"},
-            {"debug.instrumentCompute",           "true"},
-            {"debug.loweredVarDumpFile",          "vars.capnp"},
-            {"debug.instrumentControlFlow",       "true"},
-            {"debug.computeInstrumentationLevel", "tile"},
-            {"debug.outputAllSymbols",            "true"},
             {"autoReport.all",                    "true"},
             {"autoReport.outputSerializedGraph",  "true"},
-            {"debug.retainDebugInformation",      "true"},
     };
 
     auto programIds = map<string, int>();
@@ -160,19 +155,32 @@ int main(int argc, char *argv[]) {
 
 
     std::cout << "STEP 7: Attach data streams" << std::endl;
-    auto hostData = vector<float>(NUM_DATA_ITEMS, 0.0f);
+    auto hostData = vector<float>(NUM_DATA_ITEMS, 1.0f);
+    // print before
+    std::cout << "\nBefore: ";
+    for (auto i = 0; i < NUM_DATA_ITEMS; i++) {
+        std::cout << hostData[i] << " ";
+    }
+    std::cout << "\nHow much to add: " << HOW_MUCH_TO_ADD << std::endl;
     engine.connectStream("TO_IPU", hostData.data());
     engine.connectStream("FROM_IPU", hostData.data());
 
-    std::cout << "STEP 8: Run programs" << std::endl;
+    std::cout << "\nSTEP 8: Run programs" << std::endl;
     engine.run(programIds["copy_to_ipu"]); // Copy to IPU
     engine.run(programIds["main"]); // Main program
     engine.run(programIds["copy_to_host"]); // Copy from IPU
 
-    std::cout << "STEP 9: Capture debug and profile info" << std::endl;
-    serializeGraph(graph);
-    engine.printProfileSummary(std::cout,
-                               OptionFlags{{"showExecutionSteps", "false"}});
+    std::cout << "\nSTEP 9: Check results" << std::endl;
+    // print hostData to see the result
+    for (auto i = 0; i < NUM_DATA_ITEMS; i++) {
+        std::cout << hostData[i] << " ";
+    }
+    
+
+    std::cout << "\nSTEP 10: Capture debug and profile info" << std::endl;
+    // serializeGraph(graph);
+    // engine.printProfileSummary(std::cout,
+                            //    OptionFlags{{"showExecutionSteps", "false"}});
 
     return EXIT_SUCCESS;
 }
